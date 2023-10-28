@@ -14,6 +14,29 @@ terraform --version
 alias tf=terraform
 ```
 
+## Management Credentials
+
+Agregar las credenciales de AWS en el archivo `~/.aws/credentials`:
+
+```bash
+[default]
+aws_access_key_id = <your_access_key_id>
+aws_secret_access_key = <your_secret_access_key>
+```
+
+Set credentials on provider
+
+```hcl
+provider "aws" {
+  region                  = "eu-west-1"
+  shared_credentials_file = "~/.aws/credentials"
+  profile                 = "terraform"
+}
+```
+
+- [How to make terraform toread aws credentials](https://stackoverflow.com/questions/64124063/how-to-make-terraform-to-read-aws-credentials-file)
+- [Shared Configuration and Credentials Files](https://registry.terraform.io/providers/hashicorp/aws/latest/docs#shared-configuration-and-credentials-files)
+
 ## Free Courses
 
 - Udemy:
@@ -27,7 +50,7 @@ openwebinars:
 - Coursera:
   - [aprendiendo-terraform](https://www.coursera.org/projects/aprendiendo-terraform)
 - YouTube
-  - [Curso Completo De Terraform - JavierPinilla](https://www.youtube.com/watch?v=Z94DYoF5ufg)
+  - [Curso Completo De Terraform - Javier Pinilla](https://www.youtube.com/watch?v=Z94DYoF5ufg)
   - [Curso de Terraform en Español](https://www.youtube.com/watch?v=jV-Br83-QV4)
   - [Curso de Terraform- Cultura DevOps](https://www.youtube.com/watch?v=ht2KJ_SS23Q&list=PLdOotbFwzDIhKD5XPOI0vNeZ9rbzGU0EH)
 
