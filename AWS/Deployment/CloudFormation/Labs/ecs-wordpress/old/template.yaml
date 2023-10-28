@@ -1,0 +1,918 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::SecretsManager-2020-07-23
+Description: > 
+  This stack deploys WordPress containers in AWS Elastic Container Service (ECS). These containers connect to 
+  Elastic File System (EFS) to persist and share the WordPress files between them and to Relational Database 
+  Service (RDS) to store the data. Requirements: VPC with an internet gateway, two sets of one private subnet 
+  and one public subnet that belong to different availability zones. Each public subnet must have a NAT gateway 
+  attached and the private subnet in the respective availability zone must route internet traffic through that 
+  NAT gateway. For more information, visit https://github.com/jquirossoto/wordpress-multisite-ecs-efs-rds
+
+################################### STACK PARAMETERS ###################################
+
+Parameters:
+
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: >
+      Required.
+      Specify the VPC Id to deploy this to.
+
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >
+      Required.
+      Specify a list of private subnet Ids. Each private subnet must have been configured in different availability zones. Please, select only two subnets.
+
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >
+      Required.
+      Specify a list of public subnet Ids. Each public subnet must have been configured in different availability zones. Please, select only two subnets.
+
+  DatabaseInstanceClass:
+    Type: String
+    Description: >
+      Required.
+      Specify the database instance type.
+    AllowedValues: [ db.t2.micro, db.t2.small, db.t2.medium, db.t2.large, db.t2.xlarge, db.t2.2xlarge, 
+      db.t3.micro, db.t3.small, db.t3.medium, db.t3.large, db.t3.xlarge, db.t3.2xlarge, db.t4g.micro, 
+      db.t4g.small, db.t4g.medium, db.t4g.large, db.t4g.xlarge, db.t4g.2xlarge, db.r3.large, db.r3.xlarge, 
+      db.r3.2xlarge, db.r3.4xlarge, db.r3.8xlarge, db.r4.large, db.r4.xlarge, db.r4.2xlarge, db.r4.4xlarge, 
+      db.r4.8xlarge, db.r4.16xlarge, db.r5.large, db.r5.xlarge, db.r5.2xlarge, db.r5.4xlarge, db.r5.8xlarge, 
+      db.r5.12xlarge, db.r5.16xlarge, db.r5.24xlarge, db.r5b.large, db.r5b.xlarge, db.r5b.2xlarge, db.r5b.4xlarge, 
+      db.r5b.8xlarge, db.r5b.12xlarge, db.r5b.16xlarge, db.r5b.24xlarge, db.r6g.large, db.r6g.xlarge, db.r6g.2xlarge, 
+      db.r6g.4xlarge, db.r6g.8xlarge, db.r6g.12xlarge, db.r6g.16xlarge, db.x2g.large, db.x2g.xlarge, db.x2g.2xlarge, 
+      db.x2g.4xlarge, db.x2g.8xlarge, db.x2g.12xlarge, db.x2g.16xlarge, db.m3.medium, db.m3.large, db.m3.xlarge, 
+      db.m3.2xlarge, db.m4.large, db.m4.xlarge, db.m4.2xlarge, db.m4.4xlarge, db.m4.10xlarge, db.m4.16xlarge, 
+      db.m5.large, db.m5.xlarge, db.m5.2xlarge, db.m5.4xlarge, db.m5.8xlarge, db.m5.12xlarge, db.m5.16xlarge, 
+      db.m5.24xlarge, db.m6g.large, db.m6g.xlarge, db.m6g.2xlarge, db.m6g.4xlarge, db.m6g.8xlarge, db.m6g.12xlarge, 
+      db.m6g.16xlarge ]
+
+  DatabaseAllocatedStorage:
+    Type: Number
+    Description: >
+      Required.
+      Specify the size of the database (GiB). Value must be between 20 and 65536.
+    MinValue: 20
+    MaxValue: 65536
+    ConstraintDescription: Must be between 20 and 65536.
+
+  DatabaseMaxAllocatedStorage:
+    Type: Number
+    Description: >
+      Required.
+      Specify the upper limit (GiB) to which Amazon RDS can automatically scale the storage of the database instance. Value must be between 20 and 65536.
+    MinValue: 20
+    MaxValue: 65536
+    ConstraintDescription: Must be between 20 and 65536.
+
+  DatabaseBackupRetentionPeriod:
+    Type: Number
+    Description: >
+      Required.
+      Specify the number of days for which automated backups are retained. Value must be between 1 and 35.
+    Default: 1
+    MinValue: 1
+    MaxValue: 35
+    ConstraintDescription: Must be between 1 and 35 days.
+
+  EnableDatabaseMultiAZ:
+    Type: String
+    Description: >
+      Required.
+      Specify Yes to enable multi availability zone deployment. It also applies to read replica if enabled.
+    Default: 'Yes'
+    AllowedValues: [ 'Yes', 'No' ]
+    ConstraintDescription: Must be Yes or No.
+
+  EnableDatabaseReadReplica:
+    Type: String
+    Description: >
+      Required.
+      Specify Yes to enable a database read replica.
+    Default: 'Yes'
+    AllowedValues: [ 'Yes', 'No' ]
+    ConstraintDescription: Must be Yes or No.
+
+  DatabaseCredentialsRotationSchedule:
+    Type: Number
+    Description: >
+      Required.
+      Specify the number of days between automatic scheduled rotations of the database credentials. Value must be between 1 and 365.
+    Default: 30
+    MinValue: 1
+    MaxValue: 365
+    ConstraintDescription: Must be between 1 and 365.
+
+  EnableEFSAutomaticBackups:
+    Type: String
+    Description: >
+      Required.
+      Specify Yes to automatically backup the file system data.
+    Default: 'Yes'
+    AllowedValues: [ 'Yes', 'No' ]
+    ConstraintDescription: Must be Yes or No.
+
+  EFSPerformanceMode:
+    Type: String
+    Description: >
+      Required.
+      Specify the performance mode of the file system.
+    Default: 'generalPurpose'
+    AllowedValues: [ 'generalPurpose', 'maxIO' ]
+    ConstraintDescription: Must be generalPurpose or maxIO.
+
+  EFSThroughputMode:
+    Type: String
+    Description: >
+      Required. 
+      Specify the throughput mode of the file system.
+    Default: 'bursting'
+    AllowedValues: [ 'bursting', 'provisioned' ]
+    ConstraintDescription: Must be bursting or provisioned.
+
+  EFSProvisionedThroughput:
+    Type: String
+    Description: >
+      Conditional: required if throughput mode is set to provisioned.
+      Specify the throughput, measured in MiB/s, to be provisioned for the file system. Value must be between 1 and 1024.
+    AllowedPattern: ^$|[0-9]{1,4}
+    ConstraintDescription: Must be either empty or a number between 1 and 1024.
+
+  CustomDomain:
+    Type: String
+    Description: >
+      Optional.
+      Specify a custom domain.
+    AllowedPattern: ^$|(?!-)[a-zA-Z0-9-.]{1,63}(?<!-)
+    ConstraintDescription: Incorrect format.
+
+  CustomDomainCertificateARN:
+    Type: String
+    Description: >
+      Conditional: required if custom domain is set.
+      Specify the ARN of the ACM certificate for the custom domain.
+    AllowedPattern: ^$|arn:aws:acm:.*
+    ConstraintDescription: Must be either empty or an ACM certificate ARN.
+
+  ECSTaskvCPU:
+    Type: String
+    Description: >
+      Required.
+      Specify the amount of vCPU to be used by the task. For more information, 
+      https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-taskdefinition.html#cfn-ecs-taskdefinition-cpu
+    AllowedValues: [ '.25', '.5', '1', '2', '4' ]
+    ConstraintDescription: Must be .25, .5, 1, 2 or 4.
+
+  ECSTaskMemory:
+    Type: Number
+    Description: >
+      Required.
+      Specify the amount (in MiB) of memory to be used by the task. This value is determined by the cpu parameter. For more 
+      information, https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-taskdefinition.html#cfn-ecs-taskdefinition-memory
+    AllowedValues: [ 256, 512, 1024, 2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216, 10240, 11264, 12288, 13312, 
+      14336, 15360, 16384, 17408, 18432, 19456, 20480, 21504, 22528, 23552, 24576, 25600, 26624, 27648, 28672, 
+      29696, 30720 ]
+    ConstraintDescription: >
+      Must be 256, 512, 1024, 2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216, 10240, 11264, 12288, 13312, 14336, 
+      15360, 16384, 17408, 18432, 19456, 20480, 21504, 22528, 23552, 24576, 25600, 26624, 27648, 28672, 29696 or 30720.
+
+  ECSLogRetentionPeriod:
+    Type: Number
+    Description: >
+      Required.
+      Specify the number of days to retain the log events.
+    Default: 90
+    AllowedValues: [ 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653 ]
+    ConstraintDescription: Must be 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827 or 3653.
+
+  ECSServiceAutoScalingMetric:
+    Type: String
+    Description: >
+      Required.
+      Specify the auto scaling metric.
+    AllowedValues: [ 'AverageCPUUtilization', 'AverageMemoryUtilization', 'RequestCountPerTarget' ]
+    ConstraintDescription: Must be AverageCPUUtilization, AverageMemoryUtilization or RequestCountPerTarget.
+
+  ECSServiceAutoScalingTargetValue:
+    Type: Number
+    Description: >
+      Required.
+      Specify the target value for the auto scaling metric. The value must be a valid number based on the choice of metric. For example, if the metric is CPU 
+      utilization, then the target value is a percent value that represents how much of the CPU can be used before scaling out.
+
+  ECSServiceAutoScalingTargetMinCapacity:
+    Type: Number
+    Description: >
+      Required.
+      Specify the minimum value to scale in to.
+
+  ECSServiceAutoScalingTargetMaxCapacity:
+    Type: Number
+    Description: >
+      Required.
+      Specify the maximum value to scale out to.
+
+################################### STACK METADATA ###################################
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - VPCId
+          - PrivateSubnetIds
+          - PublicSubnetIds
+      - Label:
+          default: Database Configuration
+        Parameters:
+          - DatabaseInstanceClass
+          - DatabaseAllocatedStorage
+          - DatabaseMaxAllocatedStorage
+          - DatabaseBackupRetentionPeriod
+          - EnableDatabaseMultiAZ
+          - EnableDatabaseReadReplica
+          - DatabaseCredentialsRotationSchedule
+      - Label:
+          default: File System Configuration
+        Parameters:
+          - EnableEFSAutomaticBackups
+          - EFSPerformanceMode
+          - EFSThroughputMode
+          - EFSProvisionedThroughput
+      - Label:
+          default: Domain Configuration
+        Parameters:
+          - CustomDomain
+          - CustomDomainCertificateARN
+      - Label:
+          default: ECS Configuration
+        Parameters:
+          - ECSTaskvCPU
+          - ECSTaskMemory
+          - ECSLogRetentionPeriod
+          - ECSServiceAutoScalingMetric
+          - ECSServiceAutoScalingTargetValue
+          - ECSServiceAutoScalingTargetMinCapacity
+          - ECSServiceAutoScalingTargetMaxCapacity
+    ParameterLabels:
+      VPCId:
+        default: Which VPC should this be deployed to?
+      PrivateSubnetIds:
+        default: To which private subnets should the resources be launched?
+      PublicSubnetIds:
+        default: To which public subnets should the resources be launched?
+      DatabaseInstanceClass:
+        default: Which instance class should be used for the database?
+      DatabaseAllocatedStorage:
+        default: What amount of storage (in gigabytes) should be allocated to the database?
+      DatabaseMaxAllocatedStorage:
+        default: What should be the maximum amount (in gigabytes) that Amazon RDS can automatically scale the storage of the database?
+      DatabaseBackupRetentionPeriod:
+        default: How long should database automated backups be retained?
+      EnableDatabaseMultiAZ:
+        default: Should the database be deployed in multiple availability zones?
+      EnableDatabaseReadReplica:
+        default: Do you want to enable a read replica?
+      DatabaseCredentialsRotationSchedule:
+        default: How often should database credentials be rotated?
+      EnableEFSAutomaticBackups:
+        default: Do you want to automatically backup the file system data?
+      EFSPerformanceMode:
+        default: What performance mode should be used for the file system?
+      EFSThroughputMode:
+        default: What throughput mode should be used for the file system?
+      EFSProvisionedThroughput:
+        default: Provisioned Throughput
+      CustomDomain:
+        default: Do you want to set a custom domain?
+      CustomDomainCertificateARN:
+        default: Certificate ARN
+      ECSTaskvCPU:
+        default: How much vCPU should the task use?
+      ECSTaskMemory:
+        default: How much memory should the task use?
+      ECSLogRetentionPeriod:
+        default: How long should the log events be retained?
+      ECSServiceAutoScalingMetric:
+        default: What metric should be used for auto scaling?
+      ECSServiceAutoScalingTargetValue:
+        default: What value should the metric use to auto scale?
+      ECSServiceAutoScalingTargetMinCapacity:
+        default: What is the minimum capacity it should scale in to?
+      ECSServiceAutoScalingTargetMaxCapacity:
+        default: What is the maximum capacity it should scale out to?
+
+################################### STACK RULES ###################################
+
+Rules:
+
+  VerifyEFSProvisionedThroughputMode:
+    RuleCondition: !Equals [ !Ref EFSThroughputMode, 'provisioned' ]
+    Assertions:
+      - Assert: !Not [ !Equals [ !Ref EFSProvisionedThroughput, '' ] ]
+        AssertDescription: Provisioned throughput is mandatory if throughput mode is set to provisioned.
+
+  VerifyCustomDomainEnablement:
+    RuleCondition: !Not [ !Equals [ !Ref CustomDomain, '' ] ]
+    Assertions:
+      - Assert: !Not [ !Equals [ !Ref CustomDomainCertificateARN, '' ] ]
+        AssertDescription: Certificate ARN is mandatory if custom domain is set.
+
+################################### STACK CONDITIONS ###################################
+
+Conditions:
+
+  DatabaseMultiAZEnabled:
+    !Equals [ !Ref EnableDatabaseMultiAZ, 'Yes' ]
+
+  DatabaseReadReplicaEnabled:
+    !Equals [ !Ref EnableDatabaseReadReplica, 'Yes' ]
+
+  EFSAutomaticBackupsEnabled:
+    !Equals [ !Ref EnableEFSAutomaticBackups, 'Yes' ]
+
+  EFSProvisionedThroughputModeEnabled:
+    !Equals [ !Ref EFSThroughputMode, 'provisioned' ]
+
+  CustomDomainEnabled:
+    !Not [ !Equals [ !Ref CustomDomain, '' ] ]
+
+  ECSServiceAutoScalingMetricRequestCountPerTargetEnabled:
+    !Equals [ !Ref ECSServiceAutoScalingMetric, 'RequestCountPerTarget' ]
+
+################################### STACK MAPPINGS ###################################
+
+Mappings:
+  
+  NameConfig:
+    Container:
+      Name: wordpress
+
+  CPUUnits:
+    '.25':
+      Units: 256
+    '.5':
+      Units: 512
+    '1':
+      Units: 1024
+    '2':
+      Units: 2048
+    '4':
+      Units: 4096
+
+  ECSServiceAutoScalingMetrics:
+    AverageCPUUtilization:
+      Metric: ECSServiceAverageCPUUtilization
+    AverageMemoryUtilization:
+      Metric: ECSServiceAverageMemoryUtilization
+    RequestCountPerTarget:
+      Metric: ALBRequestCountPerTarget
+
+################################### STACK RESOURCES ###################################
+
+Resources:
+
+  ################################### DATABASE ###################################
+
+  DatabaseHostedCredentialsRotationLambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-DBSecretRot-L-SG
+      GroupDescription: !Sub ${AWS::StackName} Database Hosted Secret Rototation Lambda Security Group.
+      SecurityGroupIngress:
+        - Description : Allow traffic from the internet on port 443.
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DBSecretRot-L-SG
+      VpcId: !Ref VPCId
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-Database-SG
+      GroupDescription: !Sub ${AWS::StackName} Database Security Group.
+      SecurityGroupIngress:
+        - Description : Allow traffic from DatabaseHostedCredentialsRotationLambdaSecurityGroup on port 3306.
+          IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref DatabaseHostedCredentialsRotationLambdaSecurityGroup
+        - Description : Allow traffic from ECSServiceSecurityGroup on port 3306.
+          IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref ECSServiceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Database-SG
+      VpcId: !Ref VPCId
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub ${AWS::StackName}-Database-SNG
+      DBSubnetGroupDescription: !Sub ${AWS::StackName} Database Subnet Group.
+      SubnetIds: !Ref PrivateSubnetIds
+
+  DatabaseCredentialsKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: !Sub ${AWS::StackName}-DBCreds-Key
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+
+  DatabaseCredentialsKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${AWS::StackName}-DBCreds-Key
+      TargetKeyId: !Ref DatabaseCredentialsKMSKey
+
+  DatabaseCredentials:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: !Sub ${AWS::StackName} Database credentials secret.
+      Name: !Sub 'rds-db-credentials/${AWS::StackName}'
+      KmsKeyId: !Ref DatabaseCredentialsKMSKey
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "wordpress"}'
+        GenerateStringKey: password
+        PasswordLength: 15
+        ExcludeCharacters: '"@/\'
+
+  DatabaseEncryptionKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: !Sub ${AWS::StackName}-DBEncry-Key
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+
+  DatabaseEncryptionKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${AWS::StackName}-DBEncry-Key
+      TargetKeyId: !Ref DatabaseEncryptionKMSKey
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBName: wordpress
+      Engine: mysql
+      MasterUsername: !Sub '{{resolve:secretsmanager:${DatabaseCredentials}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DatabaseCredentials}:SecretString:password}}'
+      MultiAZ: !If [ DatabaseMultiAZEnabled, true, false ]
+      PubliclyAccessible: false
+      AllocatedStorage: !Ref DatabaseAllocatedStorage
+      MaxAllocatedStorage: !Ref DatabaseMaxAllocatedStorage
+      BackupRetentionPeriod: !Ref DatabaseBackupRetentionPeriod
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      StorageType: gp2
+      StorageEncrypted: true
+      KmsKeyId: !GetAtt DatabaseEncryptionKMSKey.Arn
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+  
+  DatabaseReadReplica:
+    Type: AWS::RDS::DBInstance
+    Condition: DatabaseReadReplicaEnabled
+    Properties:
+      SourceDBInstanceIdentifier: !Ref Database
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      MultiAZ: !If [ DatabaseMultiAZEnabled, true, false ]
+      StorageType: gp2
+
+  DatabaseCredentialsAttachment:
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Properties:
+      SecretId: !Ref DatabaseCredentials
+      TargetId: !Ref Database
+      TargetType: AWS::RDS::DBInstance
+
+  DatabaseCredentialsRotation:
+    Type: AWS::SecretsManager::RotationSchedule
+    DependsOn:
+      - DatabaseCredentialsAttachment
+    Properties:
+      SecretId: !Ref DatabaseCredentials
+      HostedRotationLambda:
+        KmsKeyArn: !GetAtt DatabaseCredentialsKMSKey.Arn
+        RotationType: MySQLSingleUser
+        RotationLambdaName: !Sub ${AWS::StackName}-CredentialsRotationManager
+        VpcSecurityGroupIds: !Ref DatabaseHostedCredentialsRotationLambdaSecurityGroup
+        VpcSubnetIds: !Join [ ',', !Ref PrivateSubnetIds ]
+      RotationRules:
+        AutomaticallyAfterDays: !Ref DatabaseCredentialsRotationSchedule
+
+  ################################### LOAD BALANCER ###################################
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-LB-SG
+      GroupDescription: !Sub ${AWS::StackName} Load Balancer Security Group.
+      SecurityGroupIngress:
+        - Description: Allow traffic from the internet on port 80.
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - Description: Allow traffic from the internet on port 443.
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-LB-SG
+      VpcId: !Ref VPCId
+  
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${AWS::StackName}-LB
+      Type: application
+      Scheme: internet-facing
+      Subnets: !Ref PublicSubnetIds
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+
+  LoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPCId
+      Port: 80
+      Protocol: HTTP
+      Matcher:
+        HttpCode: 200-299,302
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      TargetType: ip
+      TargetGroupAttributes:
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+
+  LoadBalancerHTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions: 
+        - !If 
+          - CustomDomainEnabled
+          - Type: redirect
+            RedirectConfig: 
+              Protocol: HTTPS
+              Port: 443
+              Host: '#{host}'
+              Path: '/#{path}'
+              Query: '#{query}'
+              StatusCode: HTTP_301
+          - Type: forward
+            TargetGroupArn: !Ref LoadBalancerTargetGroup
+
+  LoadBalancerHTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: CustomDomainEnabled
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+      Certificates:
+        - CertificateArn: !Ref CustomDomainCertificateARN
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref LoadBalancerTargetGroup
+
+  ################################### EFS ###################################
+
+  EFSFileSystemEncryptionKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: !Sub ${AWS::StackName}-EFSEncry-Key
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+
+  EFSFileSystemEncryptionKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${AWS::StackName}-EFSEncry-Key
+      TargetKeyId: !Ref EFSFileSystemEncryptionKMSKey
+
+  EFSFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      KmsKeyId: !Ref EFSFileSystemEncryptionKMSKey
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-EFS
+      BackupPolicy:
+        Status: !If [ EFSAutomaticBackupsEnabled, ENABLED, DISABLED ]
+      PerformanceMode: !Ref EFSPerformanceMode
+      ThroughputMode: !Ref EFSThroughputMode
+      ProvisionedThroughputInMibps: !If [ EFSProvisionedThroughputModeEnabled, !Ref EFSProvisionedThroughput , !Ref AWS::NoValue ]
+
+  EFSMountTargetSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-EFS-MT-SG
+      GroupDescription: !Sub ${AWS::StackName} EFS Mount Target Security Group.
+      SecurityGroupIngress:
+        - Description : Allow traffic from ECSServiceSecurityGroup on port 2049.
+          IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref ECSServiceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-EFS-MT-SG
+      VpcId: !Ref VPCId
+
+  EFSMountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !Select [ 0, !Ref PrivateSubnetIds ]
+      SecurityGroups:
+        - !Ref EFSMountTargetSecurityGroup
+
+  EFSMountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !Select [ 1, !Ref PrivateSubnetIds ]
+      SecurityGroups:
+        - !Ref EFSMountTargetSecurityGroup
+
+  EFSAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+
+  ################################### ECS ###################################
+
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Sub /aws/ecs/${AWS::StackName}
+      RetentionInDays: !Ref ECSLogRetentionPeriod
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      Configuration:
+        ExecuteCommandConfiguration:
+          LogConfiguration: 
+            CloudWatchEncryptionEnabled: false
+            CloudWatchLogGroupName: !Ref ECSLogGroup
+          Logging: OVERRIDE
+      CapacityProviders:
+        - FARGATE
+      ClusterName: !Sub ${AWS::StackName}-ECSCluster
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-ECSTaskExecutionRole
+      Description: !Sub ${AWS::StackName} ECS Task Execution Role.
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  ECSTaskExecutionRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-ECSTaskExecutionRolePolicy
+      Roles:
+        - !Ref ECSTaskExecutionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - kms:Decrypt
+            Resource:
+              - !Ref DatabaseCredentials
+              - !GetAtt DatabaseCredentialsKMSKey.Arn
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-ECSTaskRole
+      Description: !Sub ${AWS::StackName} ECS Task Role.
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  ECSTaskRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-ECSTaskRolePolicy
+      Roles:
+        - !Ref ECSTaskRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - ssmmessages:CreateControlChannel
+              - ssmmessages:CreateDataChannel
+              - ssmmessages:OpenControlChannel
+              - ssmmessages:OpenDataChannel
+            Resource: '*'
+
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn:
+      - DatabaseCredentialsAttachment
+    Properties:
+      ContainerDefinitions:
+        - Name: !FindInMap [ NameConfig, Container, Name ]
+          Image: wordpress@sha256:7c33c72f1aba217fd5554d5dbc7dbad3274962c5602da353a6196db1241cd05a
+          Environment:
+            - Name: WORDPRESS_CONFIG_EXTRA
+              Value: !Sub
+                - define( 'WP_HOME', 'http://${Domain}' ); define( 'WP_SITEURL', 'http://${Domain}' ); define('WP_ALLOW_MULTISITE', true ); define('COOKIE_DOMAIN', $_SERVER['HTTP_HOST']);
+                - Domain:  !GetAtt LoadBalancer.DNSName
+          Secrets:
+            - Name: WORDPRESS_DB_HOST
+              ValueFrom: !Sub '${DatabaseCredentials}:host::'
+            - Name: WORDPRESS_DB_NAME
+              ValueFrom: !Sub '${DatabaseCredentials}:dbname::'
+            - Name: WORDPRESS_DB_USER
+              ValueFrom: !Sub '${DatabaseCredentials}:username::'
+            - Name: WORDPRESS_DB_PASSWORD
+              ValueFrom: !Sub '${DatabaseCredentials}:password::'
+          LinuxParameters:
+            InitProcessEnabled: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ECSLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: wp
+          Essential: true
+          PortMappings:
+            - ContainerPort: 80
+              Protocol: tcp
+          MountPoints:
+            - SourceVolume: EFS
+              ContainerPath: /var/www/html
+              ReadOnly: false
+      Volumes:
+        - Name: EFS
+          EFSVolumeConfiguration: 
+            FilesystemId: !Ref EFSFileSystem
+            RootDirectory: /
+            AuthorizationConfig:
+              AccessPointId: !Ref EFSAccessPoint
+            TransitEncryption: ENABLED
+      Cpu: !FindInMap [ CPUUnits, !Ref ECSTaskvCPU, Units ]
+      Memory: !Ref ECSTaskMemory
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      Family: !Sub ${AWS::StackName}-ECSTaskDefinition
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref ECSTaskRole
+
+  ECSServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-ECSService-SG
+      GroupDescription: !Sub ${AWS::StackName} ECS Service Security Group.
+      SecurityGroupIngress:
+        - Description : Allow traffic from LoadBalancerSecurityGroup on port 80.
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ECS-SG
+      VpcId: !Ref VPCId
+
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub ${AWS::StackName}-ECSService
+      Cluster: !Ref ECSCluster
+      DesiredCount: !Ref ECSServiceAutoScalingTargetMinCapacity
+      TaskDefinition: !Ref ECSTaskDefinition
+      LaunchType: FARGATE
+      EnableExecuteCommand: true
+      HealthCheckGracePeriodSeconds: 300
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ECSServiceSecurityGroup
+          Subnets: !Ref PrivateSubnetIds
+      LoadBalancers:
+        - ContainerName: !FindInMap [ NameConfig, Container, Name ]
+          ContainerPort: 80
+          TargetGroupArn: !Ref LoadBalancerTargetGroup
+
+  ################################### AUTO SCALING ###################################
+
+  ECSServiceAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join [ '', [ !GetAtt ECSService.Name, AutoScalingRole]]
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
+
+  ECSServiceAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join [ '', [ !GetAtt ECSService.Name, AutoScalingPolicy ] ]
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSServiceAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: !FindInMap [ ECSServiceAutoScalingMetrics, !Ref ECSServiceAutoScalingMetric, Metric ]
+          ResourceLabel: !If [ ECSServiceAutoScalingMetricRequestCountPerTargetEnabled, !Join [ '/', [ !GetAtt LoadBalancer.LoadBalancerFullName, !GetAtt LoadBalancerTargetGroup.TargetGroupFullName  ] ], !Ref AWS::NoValue ]
+        TargetValue: !Ref ECSServiceAutoScalingTargetValue
+
+  ECSServiceAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MinCapacity: !Ref ECSServiceAutoScalingTargetMinCapacity
+      MaxCapacity: !Ref ECSServiceAutoScalingTargetMaxCapacity
+      ResourceId: !Join [ '/', [ service, !Ref ECSCluster, !GetAtt ECSService.Name ] ]
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      RoleARN: !GetAtt ECSServiceAutoScalingRole.Arn
+
+################################### STACK OUTPUTS ###################################
+
+Outputs:
+  LoadBalancerDNSName:
+    Description: Domain of the load balancer.
+    Value: !Sub http://${LoadBalancer.DNSName}
+  DatabaseEndpointAddress:
+    Description: Connection endpoint for the database.
+    Value: !GetAtt Database.Endpoint.Address
+  DatabaseReadReplicaEndpointAddress:
+    Description: Connection endpoint for the read replica database.
+    Value: !If [ DatabaseReadReplicaEnabled, !GetAtt DatabaseReadReplica.Endpoint.Address, '' ]

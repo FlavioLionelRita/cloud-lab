@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  Se crea un EC2
+Resources:
+  PublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.0/24
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: b5741979-d586-4795-a590-f784a36d8911
+  WebServerInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-047bb4163c506cd98
+      KeyName: !Ref KeyName
+      NetworkInterfaces:
+        - GroupSet:
+            - !Ref WebServerSecurityGroup
+          AssociatePublicIpAddress: true
+          DeviceIndex: '0'
+          DeleteOnTermination: true
+          SubnetId: !Ref PublicSubnet
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: f05d419d-9129-4547-9eba-bfd38fe74f2e
+    DependsOn:
+      - PublicRoute
+  WebServerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Allow access SSH traffic
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: d7c4fd0c-3320-473e-b211-39693c042a85
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties: {}
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: bc5b416f-d1f4-4409-a07b-5ebe828a0a5c
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 54ba3b77-85e8-4afa-acbd-0b6decbe8f1c
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId: !Ref PublicRouteTable
+      GatewayId: !Ref InternetGateway
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 5a380dfe-2703-4551-90c7-5a5f6f76b0f5
+    DependsOn:
+      - VPCGatewayAttachment
+  VPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 3b5524dc-dc81-47b5-9975-00047c26380e
+  RouteTable1Association:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: dc51af83-da66-4bd9-9e93-0ea454bdc9db
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: 10.0.0.0/16
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 47e463f6-cf95-42ec-ad82-724f24be7762
+Parameters:
+  KeyName:
+    Description: Name of an EC2 KeyPair to enable SSH access to the instance.
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+Outputs:
+  URL:
+    Value: !GetAtt WebServerInstance.PublicIp
+    Description: Public IP
+Metadata:
+  'AWS::CloudFormation::Designer':
+    47e463f6-cf95-42ec-ad82-724f24be7762:
+      size:
+        width: 550
+        height: 320
+      position:
+        x: 290
+        'y': 140
+      z: 1
+      embeds:
+        - d7c4fd0c-3320-473e-b211-39693c042a85
+        - 54ba3b77-85e8-4afa-acbd-0b6decbe8f1c
+        - b5741979-d586-4795-a590-f784a36d8911
+    54ba3b77-85e8-4afa-acbd-0b6decbe8f1c:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 650
+        'y': 200
+      z: 2
+      parent: 47e463f6-cf95-42ec-ad82-724f24be7762
+      embeds:
+        - 5a380dfe-2703-4551-90c7-5a5f6f76b0f5
+    bc5b416f-d1f4-4409-a07b-5ebe828a0a5c:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 400
+        'y': 30
+      z: 1
+      embeds: []
+    3b5524dc-dc81-47b5-9975-00047c26380e:
+      source:
+        id: 47e463f6-cf95-42ec-ad82-724f24be7762
+      target:
+        id: bc5b416f-d1f4-4409-a07b-5ebe828a0a5c
+    5a380dfe-2703-4551-90c7-5a5f6f76b0f5:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 710
+        'y': 240
+      z: 3
+      parent: 54ba3b77-85e8-4afa-acbd-0b6decbe8f1c
+      embeds: []
+      dependson:
+        - 3b5524dc-dc81-47b5-9975-00047c26380e
+    d7c4fd0c-3320-473e-b211-39693c042a85:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 520
+        'y': 370
+      z: 2
+      parent: 47e463f6-cf95-42ec-ad82-724f24be7762
+      embeds: []
+      iscontainedinside:
+        - 47e463f6-cf95-42ec-ad82-724f24be7762
+    b5741979-d586-4795-a590-f784a36d8911:
+      size:
+        width: 150
+        height: 160
+      position:
+        x: 340
+        'y': 210
+      z: 2
+      parent: 47e463f6-cf95-42ec-ad82-724f24be7762
+      embeds:
+        - f05d419d-9129-4547-9eba-bfd38fe74f2e
+    f05d419d-9129-4547-9eba-bfd38fe74f2e:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 370
+        'y': 270
+      z: 3
+      parent: b5741979-d586-4795-a590-f784a36d8911
+      embeds: []
+      iscontainedinside:
+        - b5741979-d586-4795-a590-f784a36d8911
+      dependson:
+        - 5a380dfe-2703-4551-90c7-5a5f6f76b0f5

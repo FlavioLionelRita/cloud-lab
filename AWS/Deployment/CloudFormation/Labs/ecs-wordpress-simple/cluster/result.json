@@ -1,0 +1,14 @@
+[
+    [
+        {
+            "OutputKey": "LoadBalancerDNSName",
+            "OutputValue": "http://wordpress-ecs-LB-1719308356.eu-west-1.elb.amazonaws.com",
+            "Description": "Domain of the load balancer."
+        },
+        {
+            "OutputKey": "DatabaseEndpointAddress",
+            "OutputValue": "wordpress-ecs-database-4mvu7tegoy5k.cqmjptrynsxv.eu-west-1.rds.amazonaws.com",
+            "Description": "Connection endpoint for the database."
+        }
+    ]
+]

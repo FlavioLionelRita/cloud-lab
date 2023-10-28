@@ -1,0 +1,512 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::SecretsManager-2020-07-23
+Description: Lab
+Parameters:
+
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: Specify the VPC Id to deploy this to.
+
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Specify a list of private subnet Ids. Each private subnet must have been configured in different availability zones. Please, select only two subnets.
+
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Specify a list of public subnet Ids. Each public subnet must have been configured in different availability zones. Please, select only two subnets.
+
+  KeyName:
+    Description: Name of an EC2 KeyPair to enable SSH access to the instance.
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+  DBUsername:
+    NoEcho: 'true'
+    Description: The WordPress database admin account username
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9]*"
+    ConstraintDescription: must begin with a letter and contain only alphanumeric
+      characters.
+  DBPassword:
+    NoEcho: 'true'
+    Description: The WordPress database admin account password
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: "[a-zA-Z0-9]*"
+    ConstraintDescription: must contain only alphanumeric characters.  
+
+  DatabaseInstanceClass:
+    Type: String
+    Description: Specify the database instance type.
+    AllowedValues: [ db.t2.micro, db.t2.small, db.t3.micro, db.t3.small, db.t4g.micro, db.t4g.small ]
+
+  DatabaseAllocatedStorage:
+    Default: '5'
+    Description: The size of the database (Gb)
+    Type: Number
+    MinValue: '5'
+    MaxValue: '1024'
+    ConstraintDescription: must be between 5 and 1024Gb.
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - VPCId
+          - PrivateSubnetIds
+          - PublicSubnetIds
+      - Label:
+          default: EC2 Configuration
+          Parameters:
+          - KeyName    
+      - Label:
+          default: Database Configuration
+        Parameters:
+          - DBUsername
+          - DBPassword
+          - DatabaseInstanceClass
+          - DatabaseAllocatedStorage
+    ParameterLabels:
+      VPCId:
+        default: Which VPC should this be deployed to ?
+      PrivateSubnetIds:
+        default: To which private subnets should the resources be launched ?
+      PublicSubnetIds:
+        default: To which public subnets should the resources be launched ?
+      KeyName:
+        default: Which EC2 KeyPair should be used for the EC2 instance ?  
+      DBUsername:
+        default: What should the database admin username be ?
+      DBPassword:
+        default: What should the database admin password be ?  
+      DatabaseInstanceClass:
+        default: Which instance class should be used for the database ?
+      DatabaseAllocatedStorage:
+        default: What amount of storage (in gigabytes) should be allocated to the database ?
+Resources:
+             
+
+  # DATABASE -------------------------------------------------------------------------------------------
+ 
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-Database-SG
+      GroupDescription: !Sub ${AWS::StackName} Database Security Group.
+      SecurityGroupIngress:
+        - Description : Allow traffic from ECSServiceSecurityGroup on port 3306.
+          IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref ECSServiceSecurityGroup
+        # - Description : Allow traffic from EC2 on port 3306.
+        #   IpProtocol: tcp
+        #   FromPort: 3306
+        #   ToPort: 3306
+        #   SourceSecurityGroupId: !Ref EC2SecurityGroup  
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Database-SG
+      VpcId: !Ref VPCId
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub ${AWS::StackName}-Database-SNG
+      DBSubnetGroupDescription: !Sub ${AWS::StackName} Database Subnet Group.
+      SubnetIds: !Ref PrivateSubnetIds
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: MySQL
+      DBInstanceIdentifier: db-instance  
+      DBName: wordpress
+      DBInstanceClass: !Ref DatabaseInstanceClass 
+      AllocatedStorage: !Ref DatabaseAllocatedStorage
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      MultiAZ: true
+      PubliclyAccessible: false      
+      StorageType: gp2
+      StorageEncrypted: false
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup   
+
+  # LOAD BALANCER ---------------------------------------------------------------------------------------
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-LB-SG
+      GroupDescription: !Sub ${AWS::StackName} Load Balancer Security Group.
+      SecurityGroupIngress:
+        - Description: Allow traffic from the internet on port 80.
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-LB-SG
+      VpcId: !Ref VPCId
+  
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${AWS::StackName}-LB
+      Type: application
+      Scheme: internet-facing
+      Subnets: !Ref PublicSubnetIds
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+
+  LoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPCId
+      Port: 80
+      Protocol: HTTP
+      Matcher:
+        HttpCode: 200-299,302
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      TargetType: ip
+      TargetGroupAttributes:
+        - Key: stickiness.enabled
+          Value: 'true'
+        - Key: stickiness.type
+          Value: lb_cookie
+
+  LoadBalancerHTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref LoadBalancerTargetGroup  
+  
+  # EFS -------------------------------------------------------------------------------------------------
+
+  EFSFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: false
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-EFS
+      BackupPolicy:
+        Status:  DISABLED
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+
+  EFSMountTargetSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-EFS-MT-SG
+      GroupDescription: !Sub ${AWS::StackName} EFS Mount Target Security Group.
+      SecurityGroupIngress:
+        - Description : Allow traffic from ECSServiceSecurityGroup on port 2049.
+          IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref ECSServiceSecurityGroup
+        # - Description : Allow traffic from EC2SecurityGroup on port 2049.
+        #   IpProtocol: tcp
+        #   FromPort: 2049
+        #   ToPort: 2049
+        #   SourceSecurityGroupId: !Ref EC2SecurityGroup  
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-EFS-MT-SG
+      VpcId: !Ref VPCId
+
+  EFSMountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !Select [ 0, !Ref PrivateSubnetIds ]
+      SecurityGroups:
+        - !Ref EFSMountTargetSecurityGroup
+
+  EFSMountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !Select [ 1, !Ref PrivateSubnetIds ]
+      SecurityGroups:
+        - !Ref EFSMountTargetSecurityGroup
+
+  # EFSMountTarget3:
+  #   Type: AWS::EFS::MountTarget
+  #   Properties:
+  #     FileSystemId: !Ref EFSFileSystem
+  #     SubnetId: !Select [ 0, !Ref PublicSubnetIds ]
+  #     SecurityGroups:
+  #       - !Ref EFSMountTargetSecurityGroup        
+
+  EFSAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+
+  # ECS -------------------------------------------------------------------------------------------------
+
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Sub /aws/ecs/${AWS::StackName}
+      RetentionInDays: 60
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      Configuration:
+        ExecuteCommandConfiguration:
+          LogConfiguration: 
+            CloudWatchEncryptionEnabled: false
+            CloudWatchLogGroupName: !Ref ECSLogGroup
+          Logging: OVERRIDE
+      CapacityProviders:
+        - FARGATE
+      ClusterName: !Sub ${AWS::StackName}-ECSCluster
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-ECSTaskExecutionRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-ECSTaskRole
+      Description: !Sub ${AWS::StackName} ECS Task Role.
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  ECSTaskRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-ECSTaskRolePolicy
+      Roles:
+        - !Ref ECSTaskRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - ssmmessages:CreateControlChannel
+              - ssmmessages:CreateDataChannel
+              - ssmmessages:OpenControlChannel
+              - ssmmessages:OpenDataChannel
+            Resource: '*'
+
+  ECSTaskDefinition:
+    DependsOn: [Database]
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: wordpress
+          Image: wordpress@sha256:7c33c72f1aba217fd5554d5dbc7dbad3274962c5602da353a6196db1241cd05a
+          Environment:
+            - Name: WORDPRESS_DB_NAME
+              Value: wordpress
+            - Name: WORDPRESS_CONFIG_EXTRA
+              Value: !Sub
+                - define( 'WP_HOME', 'http://${Domain}' ); define( 'WP_SITEURL', 'http://${Domain}' ); define('WP_ALLOW_MULTISITE', true ); define('COOKIE_DOMAIN', $_SERVER['HTTP_HOST']);
+                - Domain: !GetAtt LoadBalancer.DNSName
+            - Name: WORDPRESS_DB_HOST
+              Value: !GetAtt Database.Endpoint.Address            
+            - Name: WORDPRESS_DB_USER
+              Value: !Ref DBUsername
+            - Name: WORDPRESS_DB_PASSWORD
+              Value: !Ref DBPassword
+          LinuxParameters:
+            InitProcessEnabled: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ECSLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: wp
+          Essential: true
+          PortMappings:
+            - ContainerPort: 80
+              Protocol: tcp
+          MountPoints:
+            - SourceVolume: EFS
+              ContainerPath: /var/www/html
+              ReadOnly: false
+      Volumes:
+        - Name: EFS
+          EFSVolumeConfiguration: 
+            FilesystemId: !Ref EFSFileSystem
+            RootDirectory: /
+            AuthorizationConfig:
+              AccessPointId: !Ref EFSAccessPoint
+            TransitEncryption: ENABLED
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      Family: !Sub ${AWS::StackName}-ECSTaskDefinition
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref ECSTaskRole
+
+  ECSServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-ECSService-SG
+      GroupDescription: !Sub ${AWS::StackName} ECS Service Security Group.
+      SecurityGroupIngress:
+        - Description : Allow traffic from LoadBalancerSecurityGroup on port 80.
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ECS-SG
+      VpcId: !Ref VPCId
+
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub ${AWS::StackName}-ECSService
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      TaskDefinition: !Ref ECSTaskDefinition
+      LaunchType: FARGATE
+      EnableExecuteCommand: true
+      HealthCheckGracePeriodSeconds: 300
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ECSServiceSecurityGroup
+          Subnets: !Ref PrivateSubnetIds
+      LoadBalancers:
+        - ContainerName: wordpress
+          ContainerPort: 80
+          TargetGroupArn: !Ref LoadBalancerTargetGroup
+
+  # AUTO SCALING ---------------------------------------------------------------------------------------
+
+  ECSServiceAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join [ '', [ !GetAtt ECSService.Name, AutoScalingRole]]
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
+
+  ECSServiceAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Join [ '', [ !GetAtt ECSService.Name, AutoScalingPolicy ] ]
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSServiceAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 80
+
+  ECSServiceAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MinCapacity: 1
+      MaxCapacity: 2
+      ResourceId: !Join [ '/', [ service, !Ref ECSCluster, !GetAtt ECSService.Name ] ]
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      RoleARN: !GetAtt ECSServiceAutoScalingRole.Arn
+
+  # EC2 -------------------------------------------------------------------------------------------------
+
+  # EC2SecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: Enable HTTP access via port 80 and SSH access via port 22
+  #     VpcId: !Ref VPCId
+  #     SecurityGroupIngress:
+  #       - IpProtocol: tcp
+  #         FromPort: 22
+  #         ToPort: 22
+  #         CidrIp: 0.0.0.0/0
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub ${AWS::StackName}-EC2SecurityGroup
+
+  # EC2Instance:
+  #   Type: AWS::EC2::Instance
+  #   DependsOn: 
+  #     - EC2SecurityGroup
+  #   Properties:
+  #     InstanceType: t2.small
+  #     ImageId: ami-047bb4163c506cd98      
+  #     KeyName: !Ref KeyName
+  #     # UserData:
+  #     #   Fn::Base64: !Sub |
+  #     #     #!/bin/bash
+  #     #     yum install -y amazon-efs-utils
+  #     #     mkdir /mnt/efs
+  #     #     mount -t efs ${EFSFileSystem}:/ /mnt/efs
+  #     NetworkInterfaces:
+  #       - AssociatePublicIpAddress: true
+  #         DeviceIndex: '0'
+  #         GroupSet:
+  #           - !Ref EC2SecurityGroup
+  #         SubnetId: !Select [ 0, !Ref PublicSubnetIds ]          
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub ${AWS::StackName}-EC2Instance
+
+Outputs:
+  LoadBalancerDNSName:
+    Description: Domain of the load balancer.
+    Value: !Sub http://${LoadBalancer.DNSName}
+  DatabaseEndpointAddress:
+    Description: Connection endpoint for the database.
+    Value: !GetAtt Database.Endpoint.Address
+  ECSClusterName:
+    Description: Name of the ECS cluster.
+    Value: !Ref ECSCluster  
+  # EC2PublicDnsName:    
+  #   Description: Public DNS name of the EC2 instance
+  #   Value: !GetAtt EC2Instance.PublicDnsName

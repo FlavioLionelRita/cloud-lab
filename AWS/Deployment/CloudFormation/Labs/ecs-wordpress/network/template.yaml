@@ -1,0 +1,403 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ''
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 10.2.0.0/16
+      InstanceTenancy: default
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-IG'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 04e42732-6151-42ce-aacd-0be69c4fd8e1
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: f3782d71-a4bf-42bd-b93e-c0f915a379c7
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PubRT'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 14b64d18-3d1d-43fd-8ee7-612197836625
+  DefaultPublicRoute:
+    DependsOn:
+      - InternetGatewayAttachment
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 53b38987-a2d0-4046-b1e0-13e0821b1250
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.2.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PubSN1'
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: d50229a3-e936-493f-974f-ec9c933f7c0c
+  PublicSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+  PublicSubnet1ElasticIP:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PubSN1-NG-EIP'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 5139951e-1ec7-464d-ac54-fdead980f620
+  PublicSubnet1NatGateway:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt PublicSubnet1ElasticIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PubSN1-NG'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: da607048-75c2-44a2-8315-a24d0e79d111
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.2.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PubSN2'
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 15086896-57b1-472d-9239-4459345f14c7
+  PublicSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+  PublicSubnet2ElasticIP:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PubSN2-NG-EIP'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 34656e86-5f92-4237-a0c1-030fd10393f1
+  PublicSubnet2NatGateway:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt PublicSubnet2ElasticIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PubSN2-NG'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 42bf4223-7d5a-4d1b-8f25-65418b0badf7
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.2.2.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PrivSN1'
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: f52e463d-997b-4ad0-8862-f87e92f8bacb
+  PrivateSubnet1RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PrivSN1-RT'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 246709ae-660d-4c84-a5aa-9ea8796a5d4e
+  PrivateSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateSubnet1RouteTable
+      SubnetId: !Ref PrivateSubnet1
+  RouteToPublicSubnet1NatGateway:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivateSubnet1RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref PublicSubnet1NatGateway
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 6f6e8510-7af8-4b46-9ad8-32ebe283aac2
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.2.3.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PrivSN2'
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 53abc4ba-6488-42e8-8c56-5972eb91f41f
+  PrivateSubnet2RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC-PrivSN2-RT'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 4f7a30f0-fd24-495c-8be1-455bca3ecd79
+  PrivateSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateSubnet2RouteTable
+      SubnetId: !Ref PrivateSubnet2
+  RouteToPublicSubnet2NatGateway:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivateSubnet2RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref PublicSubnet2NatGateway
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 47d82cdd-54c3-4975-8e7c-273d3f51f8b4
+Outputs:
+  VPC:
+    Description: The ID of the newly created VPC
+    Value: !Ref VPC
+  PublicSubnet1:
+    Description: The ID of the newly created public subnet
+    Value: !Ref PublicSubnet1
+  PublicSubnet2:
+    Description: The ID of the newly created public subnet
+    Value: !Ref PublicSubnet2
+  PrivateSubnet1:
+    Description: The ID of the newly created public subnet
+    Value: !Ref PrivateSubnet1 
+  PrivateSubnet2:
+    Description: The ID of the newly created public subnet
+    Value: !Ref PrivateSubnet2       
+Metadata:
+  'AWS::CloudFormation::Designer':
+    34656e86-5f92-4237-a0c1-030fd10393f1:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -140
+        'y': 500
+      z: 3
+      parent: 15086896-57b1-472d-9239-4459345f14c7
+      embeds: []
+    5139951e-1ec7-464d-ac54-fdead980f620:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -130
+        'y': 180
+      z: 3
+      parent: d50229a3-e936-493f-974f-ec9c933f7c0c
+      embeds: []
+    04e42732-6151-42ce-aacd-0be69c4fd8e1:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -360
+        'y': 80
+      z: 2
+      parent: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+      embeds: []
+    eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e:
+      size:
+        width: 1470
+        height: 630
+      position:
+        x: -470
+        'y': 40
+      z: 1
+      embeds:
+        - d50229a3-e936-493f-974f-ec9c933f7c0c
+        - f52e463d-997b-4ad0-8862-f87e92f8bacb
+        - 15086896-57b1-472d-9239-4459345f14c7
+        - 53abc4ba-6488-42e8-8c56-5972eb91f41f
+        - 4f7a30f0-fd24-495c-8be1-455bca3ecd79
+        - 246709ae-660d-4c84-a5aa-9ea8796a5d4e
+        - 14b64d18-3d1d-43fd-8ee7-612197836625
+        - 04e42732-6151-42ce-aacd-0be69c4fd8e1
+    4f7a30f0-fd24-495c-8be1-455bca3ecd79:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 130
+        'y': 380
+      z: 2
+      parent: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+      embeds:
+        - 47d82cdd-54c3-4975-8e7c-273d3f51f8b4
+    53abc4ba-6488-42e8-8c56-5972eb91f41f:
+      size:
+        width: 620
+        height: 270
+      position:
+        x: 340
+        'y': 370
+      z: 2
+      parent: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+      embeds: []
+    246709ae-660d-4c84-a5aa-9ea8796a5d4e:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 130
+        'y': 110
+      z: 2
+      parent: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+      embeds:
+        - 6f6e8510-7af8-4b46-9ad8-32ebe283aac2
+    f52e463d-997b-4ad0-8862-f87e92f8bacb:
+      size:
+        width: 620
+        height: 240
+      position:
+        x: 340
+        'y': 90
+      z: 2
+      parent: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+      embeds: []
+    15086896-57b1-472d-9239-4459345f14c7:
+      size:
+        width: 220
+        height: 280
+      position:
+        x: -190
+        'y': 330
+      z: 2
+      parent: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+      embeds:
+        - 42bf4223-7d5a-4d1b-8f25-65418b0badf7
+        - 34656e86-5f92-4237-a0c1-030fd10393f1
+    42bf4223-7d5a-4d1b-8f25-65418b0badf7:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -140
+        'y': 370
+      z: 3
+      parent: 15086896-57b1-472d-9239-4459345f14c7
+      embeds: []
+    47d82cdd-54c3-4975-8e7c-273d3f51f8b4:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 170
+        'y': 430
+      z: 3
+      parent: 4f7a30f0-fd24-495c-8be1-455bca3ecd79
+      embeds: []
+    d50229a3-e936-493f-974f-ec9c933f7c0c:
+      size:
+        width: 250
+        height: 180
+      position:
+        x: -200
+        'y': 80
+      z: 2
+      parent: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+      embeds:
+        - 5139951e-1ec7-464d-ac54-fdead980f620
+        - da607048-75c2-44a2-8315-a24d0e79d111
+    da607048-75c2-44a2-8315-a24d0e79d111:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -120
+        'y': 90
+      z: 3
+      parent: d50229a3-e936-493f-974f-ec9c933f7c0c
+      embeds: []
+    6f6e8510-7af8-4b46-9ad8-32ebe283aac2:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 170
+        'y': 160
+      z: 3
+      parent: 246709ae-660d-4c84-a5aa-9ea8796a5d4e
+      embeds: []
+    14b64d18-3d1d-43fd-8ee7-612197836625:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: -410
+        'y': 210
+      z: 2
+      parent: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+      embeds:
+        - 53b38987-a2d0-4046-b1e0-13e0821b1250
+    f3782d71-a4bf-42bd-b93e-c0f915a379c7:
+      source:
+        id: eaacbb03-0a71-43fd-b418-f2d1fd6c8e9e
+      target:
+        id: 04e42732-6151-42ce-aacd-0be69c4fd8e1
+    53b38987-a2d0-4046-b1e0-13e0821b1250:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -370
+        'y': 260
+      z: 3
+      parent: 14b64d18-3d1d-43fd-8ee7-612197836625
+      embeds: []
+      dependson:
+        - f3782d71-a4bf-42bd-b93e-c0f915a379c7

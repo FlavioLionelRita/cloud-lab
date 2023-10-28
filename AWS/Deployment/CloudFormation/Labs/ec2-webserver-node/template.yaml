@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "Node.js app - without lb"
+
+Parameters:
+  KeyName:
+    Description:
+      Name of an existing EC2 KeyPair to enable SSH access to the AWS Elastic
+      Beanstalk instance
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+Resources:
+  VPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: VPC
+
+  Subnet:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.0.1.0/24"
+      # AvailabilityZone: us-east-1a
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Tags:
+        - Key: Name
+          Value: Subnet
+
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Key: Name
+          Value: InternetGateway
+
+  VPCGatewayAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  RouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: CFRouteTable
+
+  Route:
+    Type: "AWS::EC2::Route"
+    DependsOn: "VPCGatewayAttachment"
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  MySubnetRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref Subnet
+      RouteTableId: !Ref RouteTable
+
+  InstanceSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Security group for EC2 instance
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 1337
+          ToPort: 1337
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
+  Instance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      InstanceType: t2.micro
+      # ImageId: ami-00c39f71452c08778
+      ImageId: ami-047bb4163c506cd98
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: EC2byCloudFormation
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          GroupSet:
+            - Ref: InstanceSecurityGroup
+          SubnetId: !Ref Subnet
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+
+          # Update the package manager
+          sudo yum update -y
+
+          # Install Git
+          sudo yum install -y git
+
+          # Install Node.js LTS
+          sudo yum install -y nodejs
+
+          # Install PM2
+          npm i -g pm2
+
+          # Clone the Git repository
+          git clone https://github.com/jonathangaldino/simple-node-api /home/ec2-user/app
+
+          # Install dependencies
+          cd /home/ec2-user/app
+          npm install
+
+          # Run the app
+          sudo pm2 start server.js
+
+Outputs:
+  InstanceIPAddress:
+    Value: !GetAtt Instance.PublicIp

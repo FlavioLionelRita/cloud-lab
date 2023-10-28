@@ -1,0 +1,29 @@
+[
+    [
+        {
+            "OutputKey": "PrivateSubnet1",
+            "OutputValue": "subnet-0e24bc42dad042227",
+            "Description": "The ID of the newly created public subnet"
+        },
+        {
+            "OutputKey": "PrivateSubnet2",
+            "OutputValue": "subnet-00756966a21d132c1",
+            "Description": "The ID of the newly created public subnet"
+        },
+        {
+            "OutputKey": "VPC",
+            "OutputValue": "vpc-09781bf979b916b63",
+            "Description": "The ID of the newly created VPC"
+        },
+        {
+            "OutputKey": "PublicSubnet2",
+            "OutputValue": "subnet-0b66a4294a40e243b",
+            "Description": "The ID of the newly created public subnet"
+        },
+        {
+            "OutputKey": "PublicSubnet1",
+            "OutputValue": "subnet-031cd4c99eae4c00f",
+            "Description": "The ID of the newly created public subnet"
+        }
+    ]
+]
