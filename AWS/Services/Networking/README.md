@@ -1,7 +1,7 @@
 
 # Networking
 
-## VPC
+## Vpc
 
 Te permite crear una red virtual aislada en la nube. \
 En términos simples, una VPC te permite lanzar recursos de AWS, como instancias de EC2 o bases de datos RDS, en una red virtual.
@@ -26,7 +26,7 @@ Te permite definir rutas para dirigir el tráfico de red entre diferentes recurs
 Un Internet Gateway es un componente que permite que las instancias de EC2 y otros recursos dentro de una VPC se comuniquen con Internet. \
 También actúa como una puerta de enlace para permitir que los recursos de Internet se comuniquen con las instancias de EC2 y otros recursos dentro de una VPC.
 
-## NAT Gateway
+## Nat Gateway
 
 Un NAT Gateway es un componente que permite que las instancias de EC2 y otros recursos dentro de una VPC se comuniquen con Internet. También actúa como una puerta de enlace para permitir que los recursos de Internet se comuniquen con las instancias de EC2 y otros recursos dentro de una VPC.
 
@@ -50,4 +50,29 @@ Su nombre, "Route 53", hace referencia al puerto 53, que es el puerto utilizado 
 
 ## API Gateway
 
+Un API Gateway (Puerta de enlace para API) en AWS es un servicio que facilita la creación, publicación, mantenimiento, monitoreo y protección de API (Interfaces de Programación de Aplicaciones). \
+En términos sencillos, actúa como un punto de entrada para las aplicaciones que desean acceder a datos o funciones de tu backend.
+
 ## CloudFront
+
+CloudFront es el servicio de CDN (Red de Distribución de Contenidos) de Amazon Web Services (AWS). \
+Su función principal es acelerar la entrega de contenido web estático y dinámico, como imágenes, videos, archivos CSS y HTML, a usuarios finales alrededor del mundo. \
+La idea es reducir la latencia y mejorar la velocidad de carga de páginas web al ubicar el contenido más cerca de los usuarios.
+
+## VPC Peering Connection
+
+Una VPC Peering Connection (Conexión de Emparejamiento de VPC) en Amazon Web Services (AWS) es una relación de red entre dos Virtual Private Clouds (VPCs) que permite el enrutamiento de tráfico directo entre ellas utilizando direcciones IP privadas.
+
+## VPN
+
+VPN se refiere a Virtual Private Network (Red Privada Virtual). Una VPN en AWS es una conexión segura que permite la comunicación cifrada entre tu red local y los recursos en la nube de AWS. Esta conexión se establece a través de Internet, pero la información se transmite de manera segura mediante protocolos de cifrado.
+
+## VPC Flow Logs
+
+VPC Flow Logs es una característica de Amazon Web Services (AWS) que te permite capturar información sobre el tráfico de red que fluye dentro y fuera de una Virtual Private Cloud (VPC). \
+Esta información se presenta en forma de registros que contienen detalles sobre el tráfico, como direcciones IP de origen y destino, puertos, protocolos y la cantidad de bytes y paquetes.
+
+## Referencias
+
+- [Cómo manejar redes virtuales en la nube](https://www.youtube.com/watch?v=HIcCKT-eTKM&list=PL9T-KKyKXNCmOnsFmS_aWCmvMvd3HCB7b&index=10)
+- [Balanceo de Carga ⚖ y Auto Scaling](https://www.youtube.com/watch?v=HPXdwErNahk&list=PL9T-KKyKXNCmOnsFmS_aWCmvMvd3HCB7b&index=11)
