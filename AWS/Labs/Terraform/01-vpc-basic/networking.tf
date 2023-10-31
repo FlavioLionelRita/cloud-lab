@@ -6,6 +6,15 @@ resource "aws_vpc" "vpc" {
     Name = "lab-vpc"
   }
 }
+resource "aws_subnet" "public_subnet" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.public_subnet_cidr_block
+  availability_zone       = var.public_subnet_zone
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "public-subnet"
+  }
+}
 resource "aws_internet_gateway" "gw" {
   vpc_id = aws_vpc.vpc.id
 }
@@ -16,19 +25,11 @@ resource "aws_route_table" "rt" {
     gateway_id = aws_internet_gateway.gw.id
   }
 }
-resource "aws_subnet" "public_subnet" {
-  vpc_id                  = aws_vpc.vpc.id
-  cidr_block              =  var.public_subnet_cidr_block
-  availability_zone       =  var.public_subnet_zone
-  map_public_ip_on_launch = true
-  tags = {
-    Name = "lab-public-subnet-1"
-  }
-}
 resource "aws_route_table_association" "public_routing_table" {
   subnet_id      = aws_subnet.public_subnet.id
   route_table_id = aws_route_table.rt.id
 }
+
 resource "aws_eip" "nat" {
   vpc = true
 }
