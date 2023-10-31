@@ -72,6 +72,10 @@ VPN se refiere a Virtual Private Network (Red Privada Virtual). Una VPN en AWS e
 VPC Flow Logs es una característica de Amazon Web Services (AWS) que te permite capturar información sobre el tráfico de red que fluye dentro y fuera de una Virtual Private Cloud (VPC). \
 Esta información se presenta en forma de registros que contienen detalles sobre el tráfico, como direcciones IP de origen y destino, puertos, protocolos y la cantidad de bytes y paquetes.
 
+## Load Balancer
+
+Un Load Balancer (equilibrador de carga) es un servicio que distribuye automáticamente el tráfico entrante entre varias instancias o recursos, garantizando así que ningún recurso se vea sobrecargado, optimizando el rendimiento y mejorando la disponibilidad y la tolerancia a fallos.
+
 ## Referencias
 
 - [Cómo manejar redes virtuales en la nube](https://www.youtube.com/watch?v=HIcCKT-eTKM&list=PL9T-KKyKXNCmOnsFmS_aWCmvMvd3HCB7b&index=10)
