@@ -1,13 +1,19 @@
 # Scripts
 
+## Requirements
+
+availability credentials for devops user
+
+## Main Scripts
+
 **Listar todos los recursos:**
 
 ```sh
-./Scripts/resources.sh
+./resources.sh
 ```
 
 **Eliminar todos los recursos:**
 
 ```sh
-./Scripts/removeAll.sh
+./removeAll.sh
 ```
